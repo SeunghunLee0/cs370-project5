@@ -55,7 +55,6 @@ void *supplier_thread(void *arg) {
     supplier_arg_t *info = (supplier_arg_t *)arg;
     int id = info->id;
 
-    
     (void)id;
 
     pthread_exit(NULL);
@@ -65,7 +64,52 @@ void *enthusiast_thread(void *arg) {
     enthusiast_arg_t *info = (enthusiast_arg_t *)arg;
     int id = info->id;
 
-    (void)id;
+    // Each enthusiast tries between 15 and 25 recipes
+    int num_recipes = (rand() % 11) + 15;   // 15~25
+
+    for (int r = 0; r < num_recipes; r++) {
+
+        // STEP 1: Randomly choose leaf ingredients (1 or 2 leaves)
+        int use_green = rand() % 2;    // 0 or 1
+        int use_black = rand() % 2;    // 0 or 1
+
+        // Ensure at least one tea leaf is selected
+        if (use_green == 0 && use_black == 0) {
+            // Force one leaf: choose one randomly
+            if (rand() % 2 == 0) use_green = 1;
+            else use_black = 1;
+        }
+
+        /* Ensure no more than two leaves — this is already satisfied above */
+        // STEP 2: Choose 1~4 of the remaining ingredients
+        int include[NUM_INGREDIENTS] = {0};
+
+        include[GREEN_TEA]  = use_green;
+        include[BLACK_TEA]  = use_black;
+
+        int mandatory_count = use_green + use_black;
+        int extra_count = (rand() % 4) + 1;  // 1~4
+
+        int added = 0;
+        while (added < extra_count) {
+            int ing = (rand() % 4) + 2;  // choose from 2~5
+            if (include[ing] == 0) {
+                include[ing] = 1;
+                added++;
+            }
+        }
+
+        // STEP 3: Printing the recipe
+        printf("\033[0;92mTea enthusiast %d is requesting tea with these many pouches:\n", id);
+        for (int i = 0; i < NUM_INGREDIENTS; i++) {
+            if (include[i]) {
+                printf("  1 %s\n", ingredient_names[i]);
+            }
+        }
+        printf("\033[0m");  // reset color
+
+        usleep(2000);  // short pause to differ outputs
+    }
 
     pthread_exit(NULL);
 }
