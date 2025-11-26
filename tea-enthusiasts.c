@@ -40,6 +40,7 @@ int pouches[NUM_INGREDIENTS];
 pthread_mutex_t table_mutex;
 sem_t supplier_sems[NUM_INGREDIENTS];
 sem_t enthusiasts_done_sem;
+int stop_suppliers = 0; // when set to 1, suppliers will finish
 
 // Arguments for threads
 typedef struct {
@@ -55,7 +56,34 @@ void *supplier_thread(void *arg) {
     supplier_arg_t *info = (supplier_arg_t *)arg;
     int id = info->id;
 
-    (void)id;
+        while (1) {
+        // Wait until someone wakes me up
+        sem_wait(&supplier_sems[id]);
+
+        // Check if we are asked to stop
+        if (stop_suppliers) {
+            break;
+        }
+
+        // Generate a random number of pouches to add: 1~10
+        int amount = (rand() % 10) + 1;
+
+        // Update the shared table under mutex protection
+        pthread_mutex_lock(&table_mutex);
+
+        pouches[id] += amount;
+
+        printf("\033[0;91m%s supplier added %d pouches of %s to the table.\n\033[0m",
+               ingredient_names[id], amount, ingredient_names[id]);
+
+        fflush(stdout);
+
+        pthread_mutex_unlock(&table_mutex);
+    }
+
+    // When loop exits, supplier is finishing
+    printf("\033[0;91m%s supplier is done\n\033[0m", ingredient_names[id]);
+    fflush(stdout);
 
     pthread_exit(NULL);
 }
@@ -87,7 +115,6 @@ void *enthusiast_thread(void *arg) {
         include[GREEN_TEA]  = use_green;
         include[BLACK_TEA]  = use_black;
 
-        int mandatory_count = use_green + use_black;
         int extra_count = (rand() % 4) + 1;  // 1~4
 
         int added = 0;
@@ -188,6 +215,6 @@ int main(void) {
     }
     sem_destroy(&enthusiasts_done_sem);
 
-    printf("Program finished (threads joined, resources cleaned).\n");
+    printf("Program finished\n");
     return 0;
 }
