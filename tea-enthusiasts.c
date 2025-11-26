@@ -37,9 +37,8 @@ const char *ingredient_names[NUM_INGREDIENTS] = {
 int pouches[NUM_INGREDIENTS];
 
 // Synchronization primitives
-pthread_mutex_t table_mutex;
-sem_t supplier_sems[NUM_INGREDIENTS];
-sem_t enthusiasts_done_sem;
+pthread_mutex_t table_mutex; // protects access to pouches[]
+sem_t supplier_sems[NUM_INGREDIENTS];  // use to wake up suppliers
 int stop_suppliers = 0; // when set to 1, suppliers will finish
 
 // Arguments for threads
@@ -205,12 +204,6 @@ int main(void) {
         }
     }
 
-    // Semaphore to track enthusiasts finish
-    if (sem_init(&enthusiasts_done_sem, 0, 0) != 0) {
-        fprintf(stderr, "Error: sem_init (enthusiasts_done_sem) failed\n");
-        return 1;
-    }
-
     // Create supplier and enthusiast threads
 
     pthread_t supplier_threads[NUM_SUPPLIERS];
@@ -219,9 +212,9 @@ int main(void) {
     supplier_arg_t supplier_args[NUM_SUPPLIERS];
     enthusiast_arg_t enthusiast_args[NUM_ENTHUSIASTS];
 
-    // Create supplier threads
+    // Create supplier threads - one per ingredient
     for (int i = 0; i < NUM_SUPPLIERS; i++) {
-        supplier_args[i].id = i;  /* same as ingredient index */
+        supplier_args[i].id = i;  // same as ingredient index
         if (pthread_create(&supplier_threads[i], NULL, supplier_thread, &supplier_args[i]) != 0) {
             fprintf(stderr, "Error: pthread_create supplier %d failed\n", i);
             return 1;
@@ -242,18 +235,26 @@ int main(void) {
         pthread_join(enthusiast_threads[i], NULL);
     }
 
+    printf("Tea enthusiasts finished running\n");
+
+    // Tell suppliers to stop and wake them up
+    stop_suppliers = 1;
+    for (int i = 0; i < NUM_SUPPLIERS; i++) {
+        sem_post(&supplier_sems[i]);
+    }
+
     // Join supplier threads
     for (int i = 0; i < NUM_SUPPLIERS; i++) {
         pthread_join(supplier_threads[i], NULL);
     }
+
+    printf("Suppliers finished running\n");
 
     // Destroy mutex and semaphores
     pthread_mutex_destroy(&table_mutex);
     for (int i = 0; i < NUM_INGREDIENTS; i++) {
         sem_destroy(&supplier_sems[i]);
     }
-    sem_destroy(&enthusiasts_done_sem);
 
-    printf("Program finished\n");
     return 0;
 }
