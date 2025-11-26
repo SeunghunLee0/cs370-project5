@@ -97,46 +97,85 @@ void *enthusiast_thread(void *arg) {
 
     for (int r = 0; r < num_recipes; r++) {
 
-        // STEP 1: Randomly choose leaf ingredients (1 or 2 leaves)
-        int use_green = rand() % 2;    // 0 or 1
-        int use_black = rand() % 2;    // 0 or 1
+        // step 1: Generate how many pouches are needed per ingredients
+        int needed[NUM_INGREDIENTS] = {0};
 
-        // Ensure at least one tea leaf is selected
+        // Tea leaves: 0 or 1 each, but at least one leaf overall
+        int use_green = rand() % 2;   // 0 or 1
+        int use_black = rand() % 2;   // 0 or 1
+
         if (use_green == 0 && use_black == 0) {
-            // Force one leaf: choose one randomly
+            // if both 0 -> make one of them to 1
             if (rand() % 2 == 0) use_green = 1;
             else use_black = 1;
         }
 
-        /* Ensure no more than two leaves — this is already satisfied above */
-        // STEP 2: Choose 1~4 of the remaining ingredients
-        int include[NUM_INGREDIENTS] = {0};
+        needed[GREEN_TEA] = use_green;
+        needed[BLACK_TEA] = use_black;
 
-        include[GREEN_TEA]  = use_green;
-        include[BLACK_TEA]  = use_black;
-
-        int extra_count = (rand() % 4) + 1;  // 1~4
-
-        int added = 0;
-        while (added < extra_count) {
-            int ing = (rand() % 4) + 2;  // choose from 2~5
-            if (include[ing] == 0) {
-                include[ing] = 1;
-                added++;
+        // choose 1~4 of the remaining 4 materials randomly and set them up to need 1~4 materials
+        int extra_kinds = (rand() % 4) + 1;   // 1~4
+        int chosen = 0;
+        while (chosen < extra_kinds) {
+            int ing = (rand() % 4) + 2;       // 2~5
+            if (needed[ing] == 0) {
+                needed[ing] = (rand() % 4) + 1;  // 1~4 pouch
+                chosen++;
             }
         }
 
-        // STEP 3: Printing the recipe
+        // step 2: output recipe request content
         printf("\033[0;92mTea enthusiast %d is requesting tea with these many pouches:\n", id);
         for (int i = 0; i < NUM_INGREDIENTS; i++) {
-            if (include[i]) {
-                printf("  1 %s\n", ingredient_names[i]);
-            }
+            printf("  %d %s\n", needed[i], ingredient_names[i]);
         }
-        printf("\033[0m");  // reset color
+        printf("\033[0m");
+        fflush(stdout);
 
-        usleep(2000);  // short pause to differ outputs
+        // step 3
+        int ready = 0;
+
+        while (!ready) {
+            ready = 1;
+
+            pthread_mutex_lock(&table_mutex);
+
+            // check that all materials are sufficient
+            for (int i = 0; i < NUM_INGREDIENTS; i++) {
+                if (pouches[i] < needed[i]) {
+                    // If there is any missing material, call supplier
+                    if (needed[i] > 0) {
+                        sem_post(&supplier_sems[i]);
+                    }
+                    ready = 0;
+                }
+            }
+
+            // If all materials are sufficient, subtract them from the pouches and prepare the finished output
+            if (ready) {
+                for (int i = 0; i < NUM_INGREDIENTS; i++) {
+                    pouches[i] -= needed[i];
+                }
+
+                printf("\033[0;92mTea for enthusiast %d is prepared\n\033[0m", id);
+                fflush(stdout);
+
+                pthread_mutex_unlock(&table_mutex);
+                break;
+            }
+
+            pthread_mutex_unlock(&table_mutex);
+
+            // provide some time for supplier
+            usleep(2000);
+        }
+
+        // A little bit of a term between recipes
+        usleep(2000);
     }
+
+    printf("\033[0;92mTea enthusiast %d is done\n\033[0m", id);
+    fflush(stdout);
 
     pthread_exit(NULL);
 }
